@@ -12,15 +12,15 @@ import {
 import { runMockEnrichment } from "../src/lib/mockEngine";
 
 async function main() {
-  const email = "admin@hcispl.local";
-  let admin = getUserByEmail(email);
-  if (!admin) {
-    const passwordHash = await hashPassword("admin123");
-    admin = createUser({ name: "Admin", email, passwordHash, role: "admin" });
-    console.log(`Created admin user: ${email} / admin123`);
-  } else {
-    console.log("Admin user already exists, skipping.");
-  }
+  const email = "Gajy.admin@HCISPL.com";
+let admin = getUserByEmail(email);
+if (!admin) {
+  const passwordHash = await hashPassword("admin123");
+  admin = createUser({ name: "Admin", email, passwordHash, role: "admin", status: "approved" });
+  console.log(`Created admin user: ${email} / admin123`);
+} else {
+  console.log("Admin user already exists, skipping.");
+}
 
   const existing = db.prepare("SELECT COUNT(*) as c FROM companies").get() as { c: number };
   if (existing.c > 0) {

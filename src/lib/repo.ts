@@ -250,4 +250,16 @@ export function getIndustryBreakdown(): Array<{ industry: string; count: number 
     .all() as Array<{ industry: string; count: number }>;
 }
 
-export function getScoreDistribution(): {
+export function getScoreDistribution(): { high: number; mid: number; low: number } {
+  const high = db
+    .prepare("SELECT COUNT(*) as c FROM companies WHERE lead_score >= 70")
+    .get() as { c: number };
+  const mid = db
+    .prepare("SELECT COUNT(*) as c FROM companies WHERE lead_score >= 40 AND lead_score < 70")
+    .get() as { c: number };
+  const low = db
+    .prepare("SELECT COUNT(*) as c FROM companies WHERE lead_score < 40")
+    .get() as { c: number };
+
+  return { high: high.c, mid: mid.c, low: low.c };
+}

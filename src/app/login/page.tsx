@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("admin@hcispl.local");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -133,12 +133,6 @@ export default function LoginPage() {
               {loading ? "Signing in…" : "Sign in"}
             </button>
           </form>
-
-          <p className="mt-6 text-xs text-text-muted">
-            First run? Seed a demo account with{" "}
-            <code className="font-data text-[11px] bg-line-soft px-1.5 py-0.5 rounded">npm run seed</code> —
-            <span className="font-data"> admin@hcispl.local / admin123</span>.
-          </p>
         </div>
       </div>
     </div>

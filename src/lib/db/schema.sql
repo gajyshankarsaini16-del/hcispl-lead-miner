@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
   email         TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   role          TEXT NOT NULL DEFAULT 'member', -- admin | member
+  status        TEXT NOT NULL DEFAULT 'pending', -- pending | approved | rejected
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

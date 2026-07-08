@@ -27,6 +27,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Incorrect password." }, { status: 401 });
   }
 
+  if (user.status === "pending") {
+    return NextResponse.json(
+      { error: "Your account is awaiting admin approval." },
+      { status: 403 }
+    );
+  }
+  if (user.status === "rejected") {
+    return NextResponse.json(
+      { error: "Your account access was denied. Contact the admin." },
+      { status: 403 }
+    );
+  }
+
   await setSessionCookie({ userId: user.id, email: user.email, name: user.name, role: user.role });
   return NextResponse.json({ ok: true });
 }

@@ -1,0 +1,16 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getCompanyById, getContactsForCompany, getSocialForCompany, getTechForCompany } from "@/lib/repo";
+
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const companyId = Number(id);
+  const company = getCompanyById(companyId);
+  if (!company) return NextResponse.json({ error: "Company not found." }, { status: 404 });
+
+  return NextResponse.json({
+    company,
+    contacts: getContactsForCompany(companyId),
+    social: getSocialForCompany(companyId) ?? null,
+    technologies: getTechForCompany(companyId) ?? null,
+  });
+}

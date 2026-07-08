@@ -20,6 +20,12 @@ function createConnection() {
   const schema = fs.readFileSync(schemaPath, "utf-8");
   db.exec(schema);
 
+  // Lightweight migration: older DB files won't have the users.status column yet.
+  const userCols = db.prepare("PRAGMA table_info(users)").all() as { name: string }[];
+  if (!userCols.some((c) => c.name === "status")) {
+    db.exec("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'approved'");
+  }
+
   return db;
 }
 

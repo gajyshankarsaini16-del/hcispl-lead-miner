@@ -47,33 +47,3 @@ For production: set a real `AUTH_SECRET` in `.env` (see `.env.example`), then
   intentionally left for a later phase
 
 ## Project structure
-
-```
-src/
-  app/
-    login/                 public login page
-    (dashboard)/            everything behind auth, shares the sidebar layout
-      dashboard/  search/  bulk-upload/  companies/[id]/
-      history/  analytics/  exports/  settings/  users/  api-keys/
-    api/                    route handlers (auth, companies, search, bulk-upload, exports, dashboard stats, api-keys)
-  components/               Sidebar, ScoreBar/CoreSample (the score visual)
-  lib/
-    db/                     sqlite connection + schema.sql
-    repo.ts                 all data-access queries
-    auth.ts / session.ts    password hashing, JWT, cookie helpers
-    mockEngine.ts           placeholder Phase 2–8 enrichment — replace this first
-scripts/seed.ts             creates the admin user + demo data
-```
-
-## Suggested next steps (following the SRS's phased approach)
-
-1. **Phase 2–3**: Replace `mockEngine.ts` with a real search + scraping engine (respect
-   robots.txt and each site's terms of service; only collect data that's genuinely public).
-2. **Phase 9**: Turn bulk upload into a real background queue (BullMQ + Redis, or similar)
-   instead of processing synchronously in the request — needed once you're past ~200 rows.
-3. **Users**: Add invites and role-based permissions (schema's already there).
-4. **Postgres**: Swap `better-sqlite3` for `pg` / Postgres when you're ready to deploy —
-   the SQL in `schema.sql` and `repo.ts` translates almost directly.
-
-Give this repo to your coding AI **one phase at a time**, same as the doc recommends —
-that'll keep code quality high as the scraper and AI engine get built out.

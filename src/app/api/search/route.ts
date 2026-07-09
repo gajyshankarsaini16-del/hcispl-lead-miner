@@ -30,20 +30,20 @@ export async function POST(req: NextRequest) {
 
   const { query, queryType } = parsed.data;
 
-  const company = createCompany({ name: query, status: "processing", created_by: session.userId });
+  const company = await createCompany({ name: query, status: "processing", created_by: session.userId });
   const result = await runRealEnrichment(query, queryType);
   const providerContacts = await enrichContactsFromProviders({
     companyName: query,
     website: result.website,
     query,
     keys: {
-      apollo: getProviderKey(session.userId, "apollo"),
-      hunter: getProviderKey(session.userId, "hunter"),
+      apollo: await getProviderKey(session.userId, "apollo"),
+      hunter: await getProviderKey(session.userId, "hunter"),
     },
   });
   result.contacts.push(...providerContacts);
 
-  updateCompany(company.id, {
+  await updateCompany(company.id, {
     website: result.website,
     industry: result.industry,
     gst: result.gst,
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
   });
 
   for (const c of result.contacts) {
-    addContact({
+    await addContact({
       company_id: company.id,
       name: c.name,
       designation: c.designation,
@@ -73,10 +73,10 @@ export async function POST(req: NextRequest) {
       source: c.source,
     });
   }
-  upsertSocial({ company_id: company.id, ...result.social });
-  upsertTech({ company_id: company.id, ...result.technologies });
+  await upsertSocial({ company_id: company.id, ...result.social });
+  await upsertTech({ company_id: company.id, ...result.technologies });
 
-  logSearch({ userId: session.userId, query, queryType, companyId: company.id });
+  await logSearch({ userId: session.userId, query, queryType, companyId: company.id });
 
   return NextResponse.json({ companyId: company.id });
 }

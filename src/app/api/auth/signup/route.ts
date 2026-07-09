@@ -18,13 +18,13 @@ export async function POST(req: NextRequest) {
 
   const { name, email, password } = parsed.data;
 
-  const existing = getUserByEmail(email);
+  const existing = await getUserByEmail(email);
   if (existing) {
     return NextResponse.json({ error: "An account with that email already exists." }, { status: 409 });
   }
 
   const passwordHash = await hashPassword(password);
-  createUser({ name, email, passwordHash, role: "member", status: "pending" });
+  await createUser({ name, email, passwordHash, role: "member", status: "pending" });
 
   return NextResponse.json({
     ok: true,

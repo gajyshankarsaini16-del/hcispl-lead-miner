@@ -34,13 +34,14 @@ type FetchedPage = {
 };
 
 const ROLE_KEYWORDS = [
-  { designation: "Founder", department: "Leadership", tests: ["founder", "co-founder", "co founder"] },
-  { designation: "CTO", department: "IT", tests: ["cto", "chief technology officer"] },
-  { designation: "IT Head", department: "IT", tests: ["it head", "head it", "head of it", "it manager", "information technology"] },
+  { designation: "CEO", department: "Leadership", tests: ["ceo", "chief executive officer", "chief executive"] },
+  { designation: "Founder", department: "Leadership", tests: ["founder", "co-founder", "co founder", "founder & ceo", "founder and ceo"] },
+  { designation: "CTO", department: "IT", tests: ["cto", "chief technology officer", "chief technical officer"] },
+  { designation: "IT Head", department: "IT", tests: ["it head", "head it", "head of it", "it manager", "information technology", "vp of engineering", "head of engineering"] },
   { designation: "Admin", department: "Administration", tests: ["admin head", "administrator", "administration"] },
   { designation: "Director", department: "Leadership", tests: ["director", "managing director"] },
   { designation: "COO", department: "Operations", tests: ["coo", "chief operating officer"] },
-  { designation: "HR Head", department: "HR", tests: ["hr head", "head hr", "head of hr", "human resources", "chief human resources"] },
+  { designation: "HR Head", department: "HR", tests: ["hr head", "head hr", "head of hr", "human resources", "chief human resources", "chief people officer", "vp of people", "head of talent"] },
 ];
 
 const INDUSTRY_KEYWORDS: Array<[string, string[]]> = [
@@ -83,8 +84,19 @@ function slugCompanyName(name: string) {
 }
 
 function candidateWebsites(query: string, queryType: string): string[] {
-  const direct = queryType === "website" || queryType === "linkedin" ? normalizeUrl(query) : normalizeUrl(query);
-  if (direct && !direct.includes("linkedin.com")) return [direct];
+  if (queryType === "linkedin") {
+    // We can't fetch LinkedIn pages directly (blocked for automated access),
+    // but the URL slug is usually the company's name — use that as a
+    // starting point for a website guess instead of failing outright.
+    const slugMatch = query.match(/linkedin\.com\/company\/([^/?#]+)/i);
+    if (!slugMatch) return [];
+    const slug = slugMatch[1].replace(/[^a-z0-9]/gi, "");
+    if (slug.length < 3) return [];
+    return [`https://www.${slug}.com`, `https://www.${slug}.in`, `https://www.${slug}.co.in`, `https://${slug}.com`];
+  }
+
+  const direct = normalizeUrl(query);
+  if (direct) return [direct];
   if (queryType !== "name") return [];
 
   const slug = slugCompanyName(query);
@@ -242,6 +254,39 @@ function candidateName(value: string) {
   return name;
 }
 
+type JsonLdOrg = {
+  sameAs?: string[];
+  founder?: Array<{ name?: string } | string> | { name?: string } | string;
+  employee?: Array<{ name?: string; jobTitle?: string }>;
+  foundingDate?: string;
+  address?: { streetAddress?: string; addressLocality?: string; addressRegion?: string; addressCountry?: string } | string;
+};
+
+function extractJsonLd(html: string): JsonLdOrg | null {
+  const blocks = Array.from(html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi));
+  for (const block of blocks) {
+    try {
+      const parsed = JSON.parse(block[1].trim());
+      const items = Array.isArray(parsed) ? parsed : [parsed];
+      const org = items.find((item) => {
+        const type = item?.["@type"];
+        return type === "Organization" || type === "Corporation" || (Array.isArray(type) && type.includes("Organization"));
+      });
+      if (org) return org as JsonLdOrg;
+    } catch {
+      // Not valid/parseable JSON-LD — skip.
+    }
+  }
+  return null;
+}
+
+function jsonLdFounderNames(org: JsonLdOrg): string[] {
+  const raw = org.founder;
+  if (!raw) return [];
+  const list = Array.isArray(raw) ? raw : [raw];
+  return list.map((f) => (typeof f === "string" ? f : f?.name)).filter((n): n is string => Boolean(n));
+}
+
 function extractRoleContacts(text: string, email: string | null, phone: string | null, linkedin: string | null) {
   const chunks = text
     .replace(/\s+/g, " ")
@@ -289,6 +334,13 @@ export async function runRealEnrichment(query: string, queryType = "name"): Prom
   }
 
   if (!home) {
+    const messages: Record<string, string> = {
+      gst: "GST-number lookup needs a paid company-registry API (e.g. MCA/GSTIN data providers) — that's not connected yet, so this couldn't be resolved to a company. Try searching by company name or website instead.",
+      cin: "CIN lookup needs a paid MCA (Ministry of Corporate Affairs) data API — that's not connected yet. Try searching by company name or website instead.",
+      linkedin: "LinkedIn blocks automated scraping of its pages, so a LinkedIn URL alone can't be read directly. Try the company's official website instead, or its name.",
+      website: "Couldn't reach that website — double check the URL is correct and public.",
+      name: "Couldn't find a public website for that company name. Try entering the website URL directly for a more reliable result.",
+    };
     return {
       website: normalizeUrl(query),
       industry: null,
@@ -299,7 +351,7 @@ export async function runRealEnrichment(query: string, queryType = "name"): Prom
       founded: null,
       gst: null,
       address: null,
-      summary: "No public company website could be fetched. Add the official website URL for better results.",
+      summary: messages[queryType] ?? messages.name,
       leadScore: 0,
       priorityScore: 0,
       confidenceScore: 0,
@@ -320,8 +372,39 @@ export async function runRealEnrichment(query: string, queryType = "name"): Prom
   const emails = extractEmails(text);
   const phones = extractPhones(text);
   const social = extractSocial(html);
+  const jsonLd = extractJsonLd(home.html);
+
+  // Many sites (especially JS-rendered SPAs where the body has little text)
+  // still ship a static Organization JSON-LD block in <head> for SEO — use
+  // it to fill gaps the plain-text scrape misses.
+  if (jsonLd?.sameAs) {
+    for (const url of jsonLd.sameAs) {
+      const lower = url.toLowerCase();
+      if (!social.linkedin && lower.includes("linkedin.com")) social.linkedin = url;
+      if (!social.facebook && lower.includes("facebook.com")) social.facebook = url;
+      if (!social.instagram && lower.includes("instagram.com")) social.instagram = url;
+      if (!social.x && (lower.includes("x.com") || lower.includes("twitter.com"))) social.x = url;
+      if (!social.youtube && lower.includes("youtube.com")) social.youtube = url;
+    }
+  }
+
   const location = inferLocation(text);
   const contacts = extractRoleContacts(text, emails[0] ?? null, phones[0] ?? null, social.linkedin);
+
+  for (const founderName of jsonLdFounderNames(jsonLd ?? {})) {
+    if (contacts.some((c) => c.name.toLowerCase() === founderName.toLowerCase())) continue;
+    contacts.push({
+      name: founderName,
+      designation: "Founder",
+      department: "Leadership",
+      businessEmail: emails[0] ?? null,
+      businessPhone: phones[0] ?? null,
+      linkedin: social.linkedin,
+      confidenceScore: 65,
+      source: "Company website (structured data)",
+    });
+  }
+
   if ((emails[0] || phones[0]) && contacts.length === 0) {
     contacts.push({
       name: "Company Contact",
@@ -342,9 +425,17 @@ export async function runRealEnrichment(query: string, queryType = "name"): Prom
     city: location.city,
     state: location.state,
     country: location.country,
-    founded: extractFounded(text),
+    founded: extractFounded(text) ?? jsonLd?.foundingDate?.slice(0, 4) ?? null,
     gst: extractGst(text),
-    address: extractAddress(text),
+    address:
+      extractAddress(text) ??
+      (typeof jsonLd?.address === "string"
+        ? jsonLd.address
+        : jsonLd?.address
+        ? [jsonLd.address.streetAddress, jsonLd.address.addressLocality, jsonLd.address.addressRegion, jsonLd.address.addressCountry]
+            .filter(Boolean)
+            .join(", ") || null
+        : null),
     summary: "Profile built from publicly available pages on the company's own website. Fields not published by the company are left blank.",
     leadScore: 0,
     priorityScore: 0,

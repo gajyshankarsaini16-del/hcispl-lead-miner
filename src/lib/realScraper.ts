@@ -452,3 +452,27 @@ export async function runRealEnrichment(query: string, queryType = "name"): Prom
     confidenceScore: completeness,
   };
 }
+/**
+ * Builds a link to the relevant official portal for query types we can't
+ * scrape (GST/CIN require CAPTCHA-protected government portals; LinkedIn
+ * blocks automated access). This never fetches or bypasses anything — it
+ * just opens the right official page with a search term ready to paste,
+ * saving a manual "where do I even look this up" step.
+ */
+export function buildVerifyUrl(queryType: string, query: string, companyName?: string | null): string | null {
+  const trimmed = query.trim();
+  if (!trimmed) return null;
+
+  if (queryType === "gst") {
+    return "https://services.gst.gov.in/services/searchtp";
+  }
+  if (queryType === "cin") {
+    return "https://www.mca.gov.in/mcafoportal/viewCompanyMasterData.do";
+  }
+  if (queryType === "linkedin") {
+    if (/linkedin\.com/i.test(trimmed)) return trimmed;
+    const term = companyName || trimmed;
+    return `https://www.linkedin.com/search/results/companies/?keywords=${encodeURIComponent(term)}`;
+  }
+  return null;
+}

@@ -278,6 +278,16 @@ export async function listSearchHistory(limit = 20) {
   );
 }
 
+export async function getLatestSearchForCompany(
+  companyId: number
+): Promise<{ query: string; query_type: string } | null> {
+  const row = await get<{ query: string; query_type: string }>(
+    "SELECT query, query_type FROM search_history WHERE company_id = $1 ORDER BY created_at DESC LIMIT 1",
+    [companyId]
+  );
+  return row ?? null;
+}
+
 export async function getIndustryBreakdown(): Promise<Array<{ industry: string; count: number }>> {
   const rows = await all<{ industry: string; count: number }>(
     `SELECT COALESCE(industry, 'Unclassified') as industry, COUNT(*) as count

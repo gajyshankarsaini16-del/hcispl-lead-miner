@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getCompanyById, getContactsForCompany, getSocialForCompany, getTechForCompany } from "@/lib/repo";
+import { getCompanyById, getContactsForCompany, getSocialForCompany, getTechForCompany, getLatestSearchForCompany } from "@/lib/repo";
+import { buildVerifyUrl } from "@/lib/realScraper";
 import { CoreSample } from "@/components/ScoreBar";
-import { ArrowLeft, Globe, Mail, Phone, Link2 } from "lucide-react";
+import { ArrowLeft, Globe, Mail, Phone, Link2, ExternalLink } from "lucide-react";
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
   return (
@@ -22,6 +23,18 @@ export default async function CompanyProfilePage({ params }: { params: Promise<{
   const contacts = await getContactsForCompany(companyId);
   const social = await getSocialForCompany(companyId);
   const tech = await getTechForCompany(companyId);
+  const latestSearch = await getLatestSearchForCompany(companyId);
+  const verifyUrl = latestSearch
+    ? buildVerifyUrl(latestSearch.query_type, latestSearch.query, company.name)
+    : null;
+  const verifyLabel =
+    latestSearch?.query_type === "gst"
+      ? "Verify on GST portal"
+      : latestSearch?.query_type === "cin"
+      ? "Verify on MCA portal"
+      : latestSearch?.query_type === "linkedin"
+      ? "Open on LinkedIn"
+      : null;
 
   return (
     <div>
@@ -40,15 +53,15 @@ export default async function CompanyProfilePage({ params }: { params: Promise<{
               </span>
             )}
             {company.website && (
-              <a
-                href={company.website}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-brass-strong hover:underline"
-              >
-                <Globe size={13} /> {company.website.replace(/^https?:\/\//, "")}
-              </a>
-            )}
+  <a
+    href={company.website}
+    target="_blank"
+    rel="noopener noreferrer"
+    className="inline-flex items-center gap-1 text-brass-strong hover:underline"
+  >
+    <Globe size={13} /> {company.website.replace(/^https?:\/\//, "")}
+  </a>
+)}
           </div>
         </div>
 
@@ -66,6 +79,17 @@ export default async function CompanyProfilePage({ params }: { params: Promise<{
           {company.summary}
         </p>
       )}
+
+      {verifyUrl && verifyLabel && (
+  <a
+    href={verifyUrl}
+    target="_blank"
+    rel="noopener noreferrer"
+    className="mt-4 inline-flex items-center gap-1.5 rounded-md border border-line bg-card px-3 py-1.5 text-xs font-medium text-text hover:bg-line-soft"
+  >
+    <ExternalLink size={13} /> {verifyLabel}
+  </a>
+)}
 
       <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
         <Field label="Employees" value={company.employees} />
@@ -150,13 +174,13 @@ export default async function CompanyProfilePage({ params }: { params: Promise<{
             {social &&
               (["linkedin", "facebook", "instagram", "x", "youtube"] as const).map((k) =>
                 social[k] ? (
-                  <a
-                    key={k}
-                    href={social[k]!}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-between text-sm text-text hover:text-brass-strong"
-                  >
+  <a
+    key={k}
+    href={social[k]!}
+    target="_blank"
+    rel="noopener noreferrer"
+    className="flex items-center justify-between text-sm text-text hover:text-brass-strong"
+  >
                     <span className="capitalize">{k}</span>
                     <span className="text-xs text-text-muted truncate max-w-[60%]">{social[k]}</span>
                   </a>

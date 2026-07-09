@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
-import { db } from "@/lib/db";
+import { get, all, run } from "@/lib/db";
 import {
   createCompany,
   updateCompany,
@@ -37,19 +37,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No company names found in that file." }, { status: 400 });
   }
 
-  const jobStmt = db.prepare(
-    "INSERT INTO bulk_jobs (user_id, filename, total_rows, processed_rows, status) VALUES (?, ?, ?, 0, 'processing')"
+  const jobRow = await get<{ id: number }>(
+    `INSERT INTO bulk_jobs (user_id, filename, total_rows, processed_rows, status)
+     VALUES ($1, $2, $3, 0, 'processing') RETURNING id`,
+    [session.userId, file.name, names.length]
   );
-  const jobInfo = jobStmt.run(session.userId, file.name, names.length);
-  const jobId = Number(jobInfo.lastInsertRowid);
+  const jobId = jobRow!.id;
 
   const companyIds: number[] = [];
   const providerKeys = {
-    apollo: getProviderKey(session.userId, "apollo"),
-    hunter: getProviderKey(session.userId, "hunter"),
+    apollo: await getProviderKey(session.userId, "apollo"),
+    hunter: await getProviderKey(session.userId, "hunter"),
   };
   for (const name of names) {
-    const company = createCompany({ name, status: "processing", created_by: session.userId });
+    const company = await createCompany({ name, status: "processing", created_by: session.userId });
     const result = await runRealEnrichment(name, "name");
     const providerContacts = await enrichContactsFromProviders({
       companyName: name,
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
       keys: providerKeys,
     });
     result.contacts.push(...providerContacts);
-    updateCompany(company.id, {
+    await updateCompany(company.id, {
       website: result.website,
       industry: result.industry,
       gst: result.gst,
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
       status: "complete",
     });
     for (const c of result.contacts) {
-      addContact({
+      await addContact({
         company_id: company.id,
         name: c.name,
         designation: c.designation,
@@ -87,15 +88,15 @@ export async function POST(req: NextRequest) {
         source: c.source,
       });
     }
-    upsertSocial({ company_id: company.id, ...result.social });
-    upsertTech({ company_id: company.id, ...result.technologies });
+    await upsertSocial({ company_id: company.id, ...result.social });
+    await upsertTech({ company_id: company.id, ...result.technologies });
     companyIds.push(company.id);
   }
 
-  db.prepare("UPDATE bulk_jobs SET processed_rows = ?, status = 'complete' WHERE id = ?").run(
+  await run("UPDATE bulk_jobs SET processed_rows = $1, status = 'complete' WHERE id = $2", [
     names.length,
-    jobId
-  );
+    jobId,
+  ]);
 
   return NextResponse.json({ jobId, processed: names.length, companyIds });
 }
@@ -103,6 +104,6 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-  const jobs = db.prepare("SELECT * FROM bulk_jobs ORDER BY created_at DESC LIMIT 20").all();
+  const jobs = await all("SELECT * FROM bulk_jobs ORDER BY created_at DESC LIMIT 20");
   return NextResponse.json({ jobs });
 }

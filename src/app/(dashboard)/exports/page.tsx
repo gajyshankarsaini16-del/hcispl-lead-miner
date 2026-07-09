@@ -3,7 +3,7 @@ import { ScoreBar } from "@/components/ScoreBar";
 import { Download } from "lucide-react";
 
 export default async function ExportsPage() {
-  const companies = listCompanies({ limit: 500 });
+  const companies = await listCompanies({ limit: 500 });
 
   return (
     <div>

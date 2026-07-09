@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { all, get, run } from "@/lib/db";
 
 export type Provider = "apollo" | "hunter";
 
@@ -9,34 +9,35 @@ export type ProviderKeyInfo = {
   updated_at: string;
 };
 
-export function getProviderKey(userId: number, provider: Provider): string | null {
-  const row = db
-    .prepare("SELECT api_key FROM provider_api_keys WHERE user_id = ? AND provider = ?")
-    .get(userId, provider) as { api_key: string } | undefined;
+export async function getProviderKey(userId: number, provider: Provider): Promise<string | null> {
+  const row = await get<{ api_key: string }>(
+    "SELECT api_key FROM provider_api_keys WHERE user_id = $1 AND provider = $2",
+    [userId, provider]
+  );
   return row?.api_key ?? null;
 }
 
-export function listProviderKeys(userId: number): ProviderKeyInfo[] {
-  return db
-    .prepare(
-      "SELECT provider, key_prefix, created_at, updated_at FROM provider_api_keys WHERE user_id = ? ORDER BY provider ASC"
-    )
-    .all(userId) as ProviderKeyInfo[];
+export async function listProviderKeys(userId: number): Promise<ProviderKeyInfo[]> {
+  return all<ProviderKeyInfo>(
+    "SELECT provider, key_prefix, created_at, updated_at FROM provider_api_keys WHERE user_id = $1 ORDER BY provider ASC",
+    [userId]
+  );
 }
 
-export function saveProviderKey(userId: number, provider: Provider, apiKey: string) {
+export async function saveProviderKey(userId: number, provider: Provider, apiKey: string): Promise<void> {
   const key = apiKey.trim();
   const prefix = key.slice(0, 6);
-  db.prepare(
+  await run(
     `INSERT INTO provider_api_keys (user_id, provider, api_key, key_prefix)
-     VALUES (?, ?, ?, ?)
-     ON CONFLICT(user_id, provider) DO UPDATE SET
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (user_id, provider) DO UPDATE SET
        api_key = excluded.api_key,
        key_prefix = excluded.key_prefix,
-       updated_at = datetime('now')`
-  ).run(userId, provider, key, prefix);
+       updated_at = NOW()`,
+    [userId, provider, key, prefix]
+  );
 }
 
-export function deleteProviderKey(userId: number, provider: Provider) {
-  db.prepare("DELETE FROM provider_api_keys WHERE user_id = ? AND provider = ?").run(userId, provider);
+export async function deleteProviderKey(userId: number, provider: Provider): Promise<void> {
+  await run("DELETE FROM provider_api_keys WHERE user_id = $1 AND provider = $2", [userId, provider]);
 }

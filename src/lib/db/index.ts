@@ -1,30 +1,61 @@
-import Database from "better-sqlite3";
+import { neon } from "@neondatabase/serverless";
 import fs from "node:fs";
 import path from "node:path";
 
-// Singleton so hot-reload in dev doesn't open the file repeatedly.
+// Persistent Postgres (Neon) connection — required so data and logins
+// survive across deploys and cold starts on Vercel.
+//   DATABASE_URL = postgres://<user>:<password>@<host>.neon.tech/<db>?sslmode=require
+// Get this from the Neon console (console.neon.tech) → your project → Connection string.
+
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error(
+    "DATABASE_URL is not set. Add your Neon Postgres connection string as an environment " +
+      "variable (locally in .env, and in Vercel under Project Settings → Environment Variables)."
+  );
+}
+
+export const sql = neon(connectionString);
+
 declare global {
   // eslint-disable-next-line no-var
-  var __leadMinerDb: Database.Database | undefined;
+  var __leadMinerMigrated: Promise<void> | undefined;
 }
 
-const DB_PATH = path.join(process.cwd(), "data", "leadminer.db");
-
-function createConnection() {
-  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  const db = new Database(DB_PATH);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-
+async function migrate() {
   const schemaPath = path.join(process.cwd(), "src", "lib", "db", "schema.sql");
   const schema = fs.readFileSync(schemaPath, "utf-8");
-  db.exec(schema);
 
-  return db;
+  const statements = schema
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  for (const statement of statements) {
+    await sql.query(statement);
+  }
 }
 
-export const db = global.__leadMinerDb ?? createConnection();
+export function ready(): Promise<void> {
+  if (!global.__leadMinerMigrated) {
+    global.__leadMinerMigrated = migrate();
+  }
+  return global.__leadMinerMigrated;
+}
 
-if (process.env.NODE_ENV !== "production") {
-  global.__leadMinerDb = db;
+export async function all<T = unknown>(text: string, params: unknown[] = []): Promise<T[]> {
+  await ready();
+  const rows = await sql.query(text, params);
+  return rows as T[];
+}
+
+export async function get<T = unknown>(text: string, params: unknown[] = []): Promise<T | undefined> {
+  const rows = await all<T>(text, params);
+  return rows[0];
+}
+
+export async function run(text: string, params: unknown[] = []): Promise<void> {
+  await ready();
+  await sql.query(text, params);
 }

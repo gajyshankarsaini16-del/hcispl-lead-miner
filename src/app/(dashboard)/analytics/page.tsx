@@ -14,9 +14,9 @@ function Bar({ label, count, max }: { label: string; count: number; max: number 
 }
 
 export default async function AnalyticsPage() {
-  const industries = getIndustryBreakdown();
-  const dist = getScoreDistribution();
-  const stats = getCompanyStats();
+  const industries = await getIndustryBreakdown();
+  const dist = await getScoreDistribution();
+  const stats = await getCompanyStats();
   const maxIndustry = Math.max(1, ...industries.map((i) => i.count));
   const maxDist = Math.max(1, dist.high, dist.mid, dist.low);
 

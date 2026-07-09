@@ -13,8 +13,8 @@ function StatCard({ label, value, hint }: { label: string; value: string | numbe
 }
 
 export default async function DashboardHome() {
-  const stats = getCompanyStats();
-  const recent = listSearchHistory(6) as Array<{
+  const stats = await getCompanyStats();
+  const recent = (await listSearchHistory(6)) as Array<{
     id: number;
     query: string;
     query_type: string;

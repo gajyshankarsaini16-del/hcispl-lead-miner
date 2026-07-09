@@ -7,5 +7,5 @@ export async function GET() {
   if (!session || session.role !== "admin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  return NextResponse.json({ users: listAllUsers() });
+  return NextResponse.json({ users: await listAllUsers() });
 }

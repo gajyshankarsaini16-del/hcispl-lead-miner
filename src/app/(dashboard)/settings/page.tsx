@@ -1,4 +1,5 @@
 import { getSession } from "@/lib/session";
+import { AddContactForm } from "./SettingsForms";
 
 export default async function SettingsPage() {
   const session = await getSession();
@@ -26,9 +27,11 @@ export default async function SettingsPage() {
         </dl>
       </div>
 
+      {session?.role === "admin" && <AddContactForm />}
+
       <div className="mt-6 max-w-md rounded-lg border border-line-soft bg-line-soft/40 px-4 py-3 text-xs text-text-muted leading-relaxed">
-        Workspace-level settings (branding, scoring weights, data retention, integrations)
-        aren't wired up yet — add them here as you build out later phases.
+        Looking for Apollo/Hunter API keys (for CEO/CTO/HR contact enrichment)? Those live on the{" "}
+        <strong>Integrations</strong> page in the sidebar, not here.
       </div>
     </div>
   );

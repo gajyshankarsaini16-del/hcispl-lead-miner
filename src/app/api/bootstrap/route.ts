@@ -8,11 +8,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const email = "Gajy.admin@HCISPL.com";
-  let admin = getUserByEmail(email);
+  const email = "gajy.admin@hcispl.com";
+  let admin = await getUserByEmail(email);
   if (!admin) {
     const passwordHash = await hashPassword("admin123");
-    admin = createUser({ name: "Admin", email, passwordHash, role: "admin", status: "approved" });
+    admin = await createUser({ name: "Admin", email, passwordHash, role: "admin", status: "approved" });
     return NextResponse.json({ ok: true, created: true });
   }
   return NextResponse.json({ ok: true, created: false, message: "Admin already exists" });

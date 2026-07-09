@@ -42,4 +42,5 @@ export async function POST(req: NextRequest) {
   // No email service is wired up yet, so the temp password is returned once
   // here for the admin to share with the person directly.
   return NextResponse.json({ ok: true, user: { id: user.id, email: user.email }, tempPassword });
+
 }

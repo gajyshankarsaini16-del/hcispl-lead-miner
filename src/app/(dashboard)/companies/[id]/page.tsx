@@ -16,12 +16,12 @@ function Field({ label, value }: { label: string; value: string | null | undefin
 export default async function CompanyProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const companyId = Number(id);
-  const company = getCompanyById(companyId);
+  const company = await getCompanyById(companyId);
   if (!company) notFound();
 
-  const contacts = getContactsForCompany(companyId);
-  const social = getSocialForCompany(companyId);
-  const tech = getTechForCompany(companyId);
+  const contacts = await getContactsForCompany(companyId);
+  const social = await getSocialForCompany(companyId);
+  const tech = await getTechForCompany(companyId);
 
   return (
     <div>

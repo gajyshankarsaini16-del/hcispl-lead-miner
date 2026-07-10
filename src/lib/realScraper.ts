@@ -12,6 +12,8 @@ export type EnrichmentResult = {
   leadScore: number;
   priorityScore: number;
   confidenceScore: number;
+  latitude?: number | null;
+  longitude?: number | null;
   contacts: Array<{
     name: string;
     designation: string;
@@ -85,9 +87,6 @@ function slugCompanyName(name: string) {
 
 function candidateWebsites(query: string, queryType: string): string[] {
   if (queryType === "linkedin") {
-    // We can't fetch LinkedIn pages directly (blocked for automated access),
-    // but the URL slug is usually the company's name — use that as a
-    // starting point for a website guess instead of failing outright.
     const slugMatch = query.match(/linkedin\.com\/company\/([^/?#]+)/i);
     if (!slugMatch) return [];
     const slug = slugMatch[1].replace(/[^a-z0-9]/gi, "");
@@ -333,6 +332,13 @@ export async function runRealEnrichment(query: string, queryType = "name"): Prom
     if (home) break;
   }
 
+  // NEW: if direct guessing failed, try search providers (SerpApi -> Tavily -> DuckDuckGo)
+  if (!home && queryType === "name") {
+    const { findCompanyWebsite } = await import("@/lib/webSearchProviders");
+    const found = await findCompanyWebsite(query);
+    if (found) home = await fetchPage(found);
+  }
+
   if (!home) {
     const messages: Record<string, string> = {
       gst: "GST-number lookup needs a paid company-registry API (e.g. MCA/GSTIN data providers) — that's not connected yet, so this couldn't be resolved to a company. Try searching by company name or website instead.",
@@ -355,10 +361,21 @@ export async function runRealEnrichment(query: string, queryType = "name"): Prom
       leadScore: 0,
       priorityScore: 0,
       confidenceScore: 0,
+      latitude: null,
+      longitude: null,
       contacts: [],
       social: { linkedin: null, facebook: null, instagram: null, x: null, youtube: null },
       technologies: { firewall: null, cloud: null, email: null, erp: null, crm: null, hosting: null, analytics: null, cdn: null, cms: null },
     };
+  }
+
+  // NEW: if the scraped homepage has very little text (JS-heavy SPA), retry via Jina Reader
+  if (home.text.length < 200) {
+    const { fetchCleanContent } = await import("@/lib/jinaReader");
+    const cleanText = await fetchCleanContent(home.url);
+    if (cleanText && cleanText.length > home.text.length) {
+      home = { ...home, text: cleanText };
+    }
   }
 
   const pages = [home];
@@ -374,9 +391,6 @@ export async function runRealEnrichment(query: string, queryType = "name"): Prom
   const social = extractSocial(html);
   const jsonLd = extractJsonLd(home.html);
 
-  // Many sites (especially JS-rendered SPAs where the body has little text)
-  // still ship a static Organization JSON-LD block in <head> for SEO — use
-  // it to fill gaps the plain-text scrape misses.
   if (jsonLd?.sameAs) {
     for (const url of jsonLd.sameAs) {
       const lower = url.toLowerCase();
@@ -444,21 +458,51 @@ export async function runRealEnrichment(query: string, queryType = "name"): Prom
     social,
     technologies: extractTechnologies(pages),
   };
+
+  // NEW: AI-generated summary (Gemini -> Groq fallback)
+  const { generateAiSummary } = await import("@/lib/aiEnrichment");
+  const ai = await generateAiSummary(query, text);
+  if (ai.summary && !ai.summary.startsWith("AI summary unavailable")) {
+    base.summary = ai.summary;
+  }
+
+  // NEW: geocode the scraped address via PositionStack
+  let geo: { latitude: number; longitude: number; city: string | null; region: string | null; country: string | null } | null = null;
+  if (base.address) {
+    const { geocodeAddress } = await import("@/lib/geocoding");
+    geo = await geocodeAddress(base.address);
+  }
+
+  // NEW: fill missing email/phone on scraped contacts using FullEnrich
+  if (base.contacts.length > 0) {
+    const { enrichContactsFromFullEnrich } = await import("@/lib/fullEnrichProvider");
+    const domain = base.website ? new URL(base.website).hostname.replace(/^www\./, "") : null;
+    const enriched = await enrichContactsFromFullEnrich({
+      companyName: query,
+      domain,
+      contacts: base.contacts.map((c) => ({ name: c.name, linkedin: c.linkedin })),
+    });
+    for (const e of enriched) {
+      const existing = base.contacts.find((c) => c.name.toLowerCase() === e.name.toLowerCase());
+      if (existing) {
+        existing.businessEmail = existing.businessEmail ?? e.businessEmail;
+        existing.businessPhone = existing.businessPhone ?? e.businessPhone;
+        if (e.businessEmail || e.businessPhone) existing.confidenceScore = Math.max(existing.confidenceScore, e.confidenceScore);
+      }
+    }
+  }
+
   const completeness = score(base, emails, phones);
   return {
     ...base,
     leadScore: completeness,
     priorityScore: Math.min(100, completeness + (contacts.length ? 10 : 0)),
     confidenceScore: completeness,
+    latitude: geo?.latitude ?? null,
+    longitude: geo?.longitude ?? null,
   };
 }
-/**
- * Builds a link to the relevant official portal for query types we can't
- * scrape (GST/CIN require CAPTCHA-protected government portals; LinkedIn
- * blocks automated access). This never fetches or bypasses anything — it
- * just opens the right official page with a search term ready to paste,
- * saving a manual "where do I even look this up" step.
- */
+
 export function buildVerifyUrl(queryType: string, query: string, companyName?: string | null): string | null {
   const trimmed = query.trim();
   if (!trimmed) return null;

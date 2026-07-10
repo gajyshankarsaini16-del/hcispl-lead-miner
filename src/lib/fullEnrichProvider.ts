@@ -166,45 +166,44 @@ export async function enrichContactsFromFullEnrich(input: {
     return [];
   }
 
-  return results
-    .map((result) => {
-      const item = result as Record<string, unknown>;
-      const contact = (item.contact ?? item) as Record<string, unknown>;
+  const output: FullEnrichContact[] = [];
 
-      const emails = (
-        contact.work_emails ??
-        contact.emails ??
-        []
-      ) as Array<{ email: string }>;
+  for (const result of results) {
+    const item = result as Record<string, unknown>;
+    const contact = (item.contact ?? item) as Record<string, unknown>;
 
-      const phones = (
-        contact.phones ??
-        []
-      ) as Array<{ number: string }>;
+    const emails = (
+      contact.work_emails ??
+      contact.emails ??
+      []
+    ) as Array<{ email: string }>;
 
-      const name = `${contact.first_name ?? ""} ${
-        contact.last_name ?? ""
-      }`.trim();
+    const phones = (
+      contact.phones ??
+      []
+    ) as Array<{ number: string }>;
 
-      if (!name) {
-        return null;
-      }
+    const name = `${contact.first_name ?? ""} ${
+      contact.last_name ?? ""
+    }`.trim();
 
-      const title = String(contact.title ?? "Decision Maker");
+    if (!name) {
+      continue;
+    }
 
-      return {
-        name,
-        designation: title,
-        department: titleToDepartment(title),
-        businessEmail: emails[0]?.email ?? null,
-        businessPhone: phones[0]?.number ?? null,
-        linkedin: (contact.linkedin_url as string) ?? null,
-        confidenceScore: 85,
-        source: "FullEnrich API",
-      };
-    })
-    .filter(
-      (contact): contact is FullEnrichContact =>
-        contact !== null
-    );
+    const title = String(contact.title ?? "Decision Maker");
+
+    output.push({
+      name,
+      designation: title,
+      department: titleToDepartment(title),
+      businessEmail: emails[0]?.email ?? null,
+      businessPhone: phones[0]?.number ?? null,
+      linkedin: (contact.linkedin_url as string) ?? null,
+      confidenceScore: 85,
+      source: "FullEnrich API",
+    });
+  }
+
+  return output;
 }

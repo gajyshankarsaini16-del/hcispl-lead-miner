@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Trash2 } from "lucide-react";
 
 type UserRow = {
   id: number;
@@ -11,9 +12,10 @@ type UserRow = {
   created_at: string;
 };
 
-export default function UsersPage() {
+export function UsersTable({ currentUserId }: { currentUserId: number }) {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   async function load() {
     setLoading(true);
@@ -38,12 +40,28 @@ export default function UsersPage() {
     load();
   }
 
+  async function handleDelete(id: number, name: string) {
+    const confirmed = window.confirm(`Delete ${name}? This can't be undone.`);
+    if (!confirmed) return;
+
+    setDeletingId(id);
+    const res = await fetch(`/api/admin/users/${id}`, { method: "DELETE" });
+    setDeletingId(null);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error ?? "Could not delete user.");
+      return;
+    }
+    load();
+  }
+
   if (loading) return <div className="text-sm text-text-muted">Loading users…</div>;
 
   return (
     <div>
       <h1 className="font-display text-2xl font-semibold text-text mb-1">Users</h1>
-      <p className="text-sm text-text-muted mb-6">Approve or reject new sign-ups.</p>
+      <p className="text-sm text-text-muted mb-6">Approve, reject, or remove accounts.</p>
 
       <div className="rounded-lg border border-line overflow-hidden">
         <table className="w-full text-sm">
@@ -79,7 +97,7 @@ export default function UsersPage() {
                 <td className="px-4 py-2.5 text-text-muted">
                   {new Date(u.created_at).toLocaleDateString()}
                 </td>
-                <td className="px-4 py-2.5 text-right space-x-2">
+                <td className="px-4 py-2.5 text-right space-x-2 whitespace-nowrap">
                   {u.status !== "approved" && (
                     <button
                       onClick={() => updateStatus(u.id, "approved")}
@@ -94,6 +112,16 @@ export default function UsersPage() {
                       className="text-xs px-2.5 py-1 rounded-md border border-line hover:bg-card"
                     >
                       Reject
+                    </button>
+                  )}
+                  {u.id !== currentUserId && (
+                    <button
+                      onClick={() => handleDelete(u.id, u.name)}
+                      disabled={deletingId === u.id}
+                      title="Delete user"
+                      className="inline-flex items-center justify-center rounded-md p-1.5 text-text-muted hover:bg-rust/10 hover:text-rust disabled:opacity-50"
+                    >
+                      <Trash2 size={14} />
                     </button>
                   )}
                 </td>

@@ -305,3 +305,7 @@ export async function getScoreDistribution(): Promise<{ high: number; mid: numbe
 
   return { high: Number(high?.c ?? 0), mid: Number(mid?.c ?? 0), low: Number(low?.c ?? 0) };
 }
+
+export async function deleteUser(id: number): Promise<void> {
+  await run("DELETE FROM users WHERE id = $1", [id]);
+}

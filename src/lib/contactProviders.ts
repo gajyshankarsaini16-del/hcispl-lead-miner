@@ -182,19 +182,63 @@ export async function findHunterEmailForPerson(
   }
 }
 
-export async function refineContactsWithHunterEmailFinder(
+export async function findTombaEmailForPerson(
+  apiKey: string,
+  apiSecret: string,
+  domain: string,
+  fullName: string
+): Promise<{ email: string | null; confidence: number }> {
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length < 2 || !domain) return { email: null, confidence: 0 };
+  const firstName = parts[0];
+  const lastName = parts.slice(1).join(" ");
+
+  const url = new URL("https://api.tomba.io/v1/email-finder");
+  url.searchParams.set("domain", domain);
+  url.searchParams.set("first_name", firstName);
+  url.searchParams.set("last_name", lastName);
+
+  try {
+    const res = await fetch(url, {
+      headers: { "X-Tomba-Key": apiKey, "X-Tomba-Secret": apiSecret },
+    });
+    if (!res.ok) return { email: null, confidence: 0 };
+    const data = await res.json();
+    return { email: data?.data?.email ?? null, confidence: data?.data?.score ?? 0 };
+  } catch {
+    return { email: null, confidence: 0 };
+  }
+}
+
+export async function refineContactsWithEmailFinders(
   contacts: ProviderContact[],
   domain: string | null,
   hunterKey: string | null
 ): Promise<void> {
-  if (!hunterKey || !domain) return;
+  if (!domain) return;
+  const tombaKey = process.env.TOMBA_API_KEY;
+  const tombaSecret = process.env.TOMBA_SECRET;
+
   for (const contact of contacts) {
     if (contact.businessEmail) continue;
-    const { email, confidence } = await findHunterEmailForPerson(hunterKey, domain, contact.name);
-    if (email) {
-      contact.businessEmail = email;
-      contact.confidenceScore = Math.max(contact.confidenceScore, confidence);
-      contact.source = `${contact.source} + Hunter email-finder`;
+
+    if (hunterKey) {
+      const { email, confidence } = await findHunterEmailForPerson(hunterKey, domain, contact.name);
+      if (email) {
+        contact.businessEmail = email;
+        contact.confidenceScore = Math.max(contact.confidenceScore, confidence);
+        contact.source = `${contact.source} + Hunter email-finder`;
+        continue;
+      }
+    }
+
+    if (tombaKey && tombaSecret) {
+      const { email, confidence } = await findTombaEmailForPerson(tombaKey, tombaSecret, domain, contact.name);
+      if (email) {
+        contact.businessEmail = email;
+        contact.confidenceScore = Math.max(contact.confidenceScore, confidence);
+        contact.source = `${contact.source} + Tomba email-finder`;
+      }
     }
   }
 }

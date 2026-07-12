@@ -9,7 +9,7 @@ import {
   upsertTech,
 } from "@/lib/repo";
 import { runRealEnrichment } from "@/lib/realScraper";
-import { enrichContactsFromProviders, refineContactsWithHunterEmailFinder } from "@/lib/contactProviders";
+import { enrichContactsFromProviders, refineContactsWithEmailFinders } from "@/lib/contactProviders";
 import { getProviderKey } from "@/lib/providerKeys";
 
 function parseCsvNames(text: string): string[] {
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     });
     result.contacts.push(...providerContacts);
     const domain = result.website ? new URL(result.website).hostname.replace(/^www\./, "") : null;
-    await refineContactsWithHunterEmailFinder(result.contacts, domain, providerKeys.hunter);
+    await refineContactsWithEmailFinders(result.contacts, domain, providerKeys.hunter);
     await updateCompany(company.id, {
       website: result.website,
       industry: result.industry,

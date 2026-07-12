@@ -55,3 +55,4 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     console.error("deleteUser failed:", err);
     return NextResponse.json({ error: "Could not delete user due to a database error." }, { status: 500 });
   }
+}

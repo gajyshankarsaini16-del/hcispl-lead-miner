@@ -48,6 +48,10 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  await deleteUser(userId);
-  return NextResponse.json({ ok: true });
-}
+  try {
+    await deleteUser(userId);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("deleteUser failed:", err);
+    return NextResponse.json({ error: "Could not delete user due to a database error." }, { status: 500 });
+  }

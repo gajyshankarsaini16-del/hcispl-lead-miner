@@ -155,3 +155,46 @@ export async function enrichContactsFromProviders(input: {
 
   return dedupeContacts(contacts);
 }
+
+export async function findHunterEmailForPerson(
+  apiKey: string,
+  domain: string,
+  fullName: string
+): Promise<{ email: string | null; confidence: number }> {
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length < 2 || !domain) return { email: null, confidence: 0 };
+  const firstName = parts[0];
+  const lastName = parts.slice(1).join(" ");
+
+  const url = new URL("https://api.hunter.io/v2/email-finder");
+  url.searchParams.set("domain", domain);
+  url.searchParams.set("first_name", firstName);
+  url.searchParams.set("last_name", lastName);
+  url.searchParams.set("api_key", apiKey);
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return { email: null, confidence: 0 };
+    const data = await res.json();
+    return { email: data?.data?.email ?? null, confidence: data?.data?.score ?? 0 };
+  } catch {
+    return { email: null, confidence: 0 };
+  }
+}
+
+export async function refineContactsWithHunterEmailFinder(
+  contacts: ProviderContact[],
+  domain: string | null,
+  hunterKey: string | null
+): Promise<void> {
+  if (!hunterKey || !domain) return;
+  for (const contact of contacts) {
+    if (contact.businessEmail) continue;
+    const { email, confidence } = await findHunterEmailForPerson(hunterKey, domain, contact.name);
+    if (email) {
+      contact.businessEmail = email;
+      contact.confidenceScore = Math.max(contact.confidenceScore, confidence);
+      contact.source = `${contact.source} + Hunter email-finder`;
+    }
+  }
+}

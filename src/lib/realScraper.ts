@@ -403,33 +403,52 @@ export async function runRealEnrichment(query: string, queryType = "name"): Prom
   }
 
   const location = inferLocation(text);
-  const contacts = extractRoleContacts(text, emails[0] ?? null, phones[0] ?? null, social.linkedin);
 
-  for (const founderName of jsonLdFounderNames(jsonLd ?? {})) {
-    if (contacts.some((c) => c.name.toLowerCase() === founderName.toLowerCase())) continue;
-    contacts.push({
-      name: founderName,
-      designation: "Founder",
-      department: "Leadership",
-      businessEmail: emails[0] ?? null,
-      businessPhone: phones[0] ?? null,
-      linkedin: social.linkedin,
-      confidenceScore: 65,
-      source: "Company website (structured data)",
-    });
-  }
+  const { extractDecisionMakersAI } = await import("@/lib/aiEnrichment");
+  const aiPeople = await extractDecisionMakersAI(query, text);
 
-  if ((emails[0] || phones[0]) && contacts.length === 0) {
-    contacts.push({
-      name: "Company Contact",
-      designation: "General Contact",
-      department: "Admin",
-      businessEmail: emails[0] ?? null,
-      businessPhone: phones[0] ?? null,
+  let contacts: EnrichmentResult["contacts"];
+
+  if (aiPeople.length > 0) {
+    contacts = aiPeople.map((p) => ({
+      name: p.name,
+      designation: p.designation,
+      department: p.department,
+      businessEmail: null,
+      businessPhone: null,
       linkedin: social.linkedin,
-      confidenceScore: 75,
-      source: "Company website",
-    });
+      confidenceScore: 70,
+      source: "Company website (AI-verified)",
+    }));
+  } else {
+    contacts = extractRoleContacts(text, emails[0] ?? null, phones[0] ?? null, social.linkedin);
+
+    for (const founderName of jsonLdFounderNames(jsonLd ?? {})) {
+      if (contacts.some((c) => c.name.toLowerCase() === founderName.toLowerCase())) continue;
+      contacts.push({
+        name: founderName,
+        designation: "Founder",
+        department: "Leadership",
+        businessEmail: emails[0] ?? null,
+        businessPhone: phones[0] ?? null,
+        linkedin: social.linkedin,
+        confidenceScore: 65,
+        source: "Company website (structured data)",
+      });
+    }
+
+    if ((emails[0] || phones[0]) && contacts.length === 0) {
+      contacts.push({
+        name: "Company Contact",
+        designation: "General Contact",
+        department: "Admin",
+        businessEmail: emails[0] ?? null,
+        businessPhone: phones[0] ?? null,
+        linkedin: social.linkedin,
+        confidenceScore: 75,
+        source: "Company website",
+      });
+    }
   }
 
   const base = {

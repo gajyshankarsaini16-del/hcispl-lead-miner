@@ -307,5 +307,10 @@ export async function getScoreDistribution(): Promise<{ high: number; mid: numbe
 }
 
 export async function deleteUser(id: number): Promise<void> {
+  await run("UPDATE companies SET created_by = NULL WHERE created_by = $1", [id]);
+  await run("DELETE FROM search_history WHERE user_id = $1", [id]);
+  await run("DELETE FROM bulk_jobs WHERE user_id = $1", [id]);
+  await run("DELETE FROM api_keys WHERE user_id = $1", [id]);
+  await run("DELETE FROM provider_api_keys WHERE user_id = $1", [id]);
   await run("DELETE FROM users WHERE id = $1", [id]);
 }

@@ -324,6 +324,13 @@ function score(result: Pick<EnrichmentResult, "website" | "gst" | "address" | "i
 }
 
 export async function runRealEnrichment(query: string, queryType = "name"): Promise<EnrichmentResult> {
+  // Compulsory multi-platform search for every name-based query — Google,
+  // LinkedIn, X, Instagram, Facebook, all in parallel.
+  const socialSearch =
+    queryType === "name"
+      ? await (await import("@/lib/webSearchProviders")).findAllSocialProfiles(query)
+      : null;
+
   const candidates = candidateWebsites(query, queryType);
   let home: FetchedPage | null = null;
 
@@ -332,7 +339,10 @@ export async function runRealEnrichment(query: string, queryType = "name"): Prom
     if (home) break;
   }
 
-  // NEW: if direct guessing failed, try search providers (SerpApi -> Tavily -> DuckDuckGo)
+  // Use the compulsory multi-platform search's Google result if direct guessing failed
+  if (!home && socialSearch?.google) {
+    home = await fetchPage(socialSearch.google);
+  }
   if (!home && queryType === "name") {
     const { findCompanyWebsite } = await import("@/lib/webSearchProviders");
     const found = await findCompanyWebsite(query);
@@ -389,6 +399,12 @@ export async function runRealEnrichment(query: string, queryType = "name"): Prom
   const emails = extractEmails(text);
   const phones = extractPhones(text);
   const social = extractSocial(html);
+  if (socialSearch) {
+    social.linkedin = social.linkedin ?? socialSearch.linkedin;
+    social.facebook = social.facebook ?? socialSearch.facebook;
+    social.instagram = social.instagram ?? socialSearch.instagram;
+    social.x = social.x ?? socialSearch.x;
+  }
   const jsonLd = extractJsonLd(home.html);
 
   if (jsonLd?.sameAs) {
@@ -407,9 +423,35 @@ export async function runRealEnrichment(query: string, queryType = "name"): Prom
   const { extractDecisionMakersAI } = await import("@/lib/aiEnrichment");
   const aiPeople = await extractDecisionMakersAI(query, text);
 
+  const { firecrawlExtractPeople } = await import("@/lib/firecrawl");
+  const fcPeople = await firecrawlExtractPeople(home.url, query);
+
+  const mergedPeopleMap = new Map<string, { name: string; designation: string; department: string }>();
+  for (const p of aiPeople) {
+    mergedPeopleMap.set(p.name.trim().toLowerCase(), p);
+  }
+  for (const p of fcPeople) {
+    const key = p.name.trim().toLowerCase();
+    if (!mergedPeopleMap.has(key)) {
+      mergedPeopleMap.set(key, { name: p.name, designation: p.title, department: "Leadership" });
+    }
+  }
+  const combinedPeople = Array.from(mergedPeopleMap.values()).slice(0, 8);
+
   let contacts: EnrichmentResult["contacts"];
 
-  if (aiPeople.length > 0) {
+  if (combinedPeople.length > 0) {
+    contacts = combinedPeople.map((p) => ({
+      name: p.name,
+      designation: p.designation,
+      department: p.department,
+      businessEmail: null,
+      businessPhone: null,
+      linkedin: social.linkedin,
+      confidenceScore: 70,
+      source: "Company website (AI-verified)",
+    }));
+  } else if (aiPeople.length > 0) {
     contacts = aiPeople.map((p) => ({
       name: p.name,
       designation: p.designation,

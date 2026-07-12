@@ -64,3 +64,36 @@ async function duckDuckGoSearch(query: string): Promise<string | null> {
     return null;
   }
 }
+
+export type SocialSearchResult = {
+  google: string | null;
+  linkedin: string | null;
+  x: string | null;
+  instagram: string | null;
+  facebook: string | null;
+};
+
+async function searchOnePlatform(query: string): Promise<string | null> {
+  const { firecrawlSearch } = await import("@/lib/firecrawl");
+  const fc = await firecrawlSearch(query, 3);
+  if (fc.length > 0) return fc[0].url;
+  return findCompanyWebsite(query);
+}
+
+export async function findAllSocialProfiles(companyName: string): Promise<SocialSearchResult> {
+  const [google, linkedin, x, instagram, facebook] = await Promise.all([
+    searchOnePlatform(`${companyName} official website`),
+    searchOnePlatform(`${companyName} company site:linkedin.com/company`),
+    searchOnePlatform(`${companyName} official site:x.com OR site:twitter.com`),
+    searchOnePlatform(`${companyName} official site:instagram.com`),
+    searchOnePlatform(`${companyName} official site:facebook.com`),
+  ]);
+
+  return {
+    google,
+    linkedin: linkedin?.includes("linkedin.com") ? linkedin : null,
+    x: x && (x.includes("x.com") || x.includes("twitter.com")) ? x : null,
+    instagram: instagram?.includes("instagram.com") ? instagram : null,
+    facebook: facebook?.includes("facebook.com") ? facebook : null,
+  };
+}

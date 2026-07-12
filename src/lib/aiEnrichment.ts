@@ -104,3 +104,21 @@ If no one qualifies, respond with exactly: []`;
     return [];
   }
 }
+
+export async function extractAddressAI(companyName: string, scrapedText: string): Promise<string | null> {
+  const prompt = `From the following text scraped from "${companyName}"'s official website, extract ONLY their physical postal/office address (street, city, state, pincode) if it is explicitly stated.
+
+Rules:
+- Return ONLY the address text, nothing else — no labels, no explanation, no extra sentences.
+- If no real postal address is explicitly stated anywhere in the text, respond with exactly: NONE
+- Never guess or construct an address from unrelated marketing text.
+
+Text: """${scrapedText.slice(0, 6000)}"""`;
+
+  const output = (await callGemini(prompt)) ?? (await callGroq(prompt));
+  if (!output) return null;
+  const cleaned = output.trim();
+  if (!cleaned || /^none$/i.test(cleaned)) return null;
+  if (cleaned.length > 300) return null;
+  return cleaned;
+}

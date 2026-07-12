@@ -81,6 +81,15 @@ function normalizeUrl(input: string): string | null {
   return null;
 }
 
+function toRootUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return `${u.protocol}//${u.hostname}`;
+  } catch {
+    return null;
+  }
+}
+
 function slugCompanyName(name: string) {
   return name.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "");
 }
@@ -339,14 +348,22 @@ export async function runRealEnrichment(query: string, queryType = "name"): Prom
     if (home) break;
   }
 
-  // Use the compulsory multi-platform search's Google result if direct guessing failed
+ // Use the compulsory multi-platform search's Google result if direct guessing failed.
+  // Always try the ROOT domain first — search results are often deep/tracking pages,
+  // not the real homepage.
   if (!home && socialSearch?.google) {
-    home = await fetchPage(socialSearch.google);
+    const root = toRootUrl(socialSearch.google);
+    if (root) home = await fetchPage(root);
+    if (!home) home = await fetchPage(socialSearch.google);
   }
   if (!home && queryType === "name") {
     const { findCompanyWebsite } = await import("@/lib/webSearchProviders");
     const found = await findCompanyWebsite(query);
-    if (found) home = await fetchPage(found);
+    if (found) {
+      const root = toRootUrl(found);
+      if (root) home = await fetchPage(root);
+      if (!home) home = await fetchPage(found);
+    }
   }
 
   if (!home) {
@@ -420,11 +437,23 @@ export async function runRealEnrichment(query: string, queryType = "name"): Prom
 
   const location = inferLocation(text);
 
+  // Feed LinkedIn page content into the extraction text too — decision makers
+  // are often listed there even when the company website doesn't mention them.
+  let extractionText = text;
+  if (socialSearch?.linkedin) {
+    const { firecrawlScrapeMarkdown } = await import("@/lib/firecrawl");
+    const linkedinText = await firecrawlScrapeMarkdown(socialSearch.linkedin);
+    if (linkedinText) {
+      extractionText = `${extractionText}\n\n--- LinkedIn page content ---\n${linkedinText.slice(0, 3000)}`;
+    }
+  }
+
   const { extractDecisionMakersAI } = await import("@/lib/aiEnrichment");
-  const aiPeople = await extractDecisionMakersAI(query, text);
+  const aiPeople = await extractDecisionMakersAI(query, extractionText);
 
   const { firecrawlExtractPeople } = await import("@/lib/firecrawl");
-  const fcPeople = await firecrawlExtractPeople(home.url, query);
+  const teamPage = pages.find((p) => /about|team|leadership|management|contact/i.test(p.url)) ?? home;
+  const fcPeople = await firecrawlExtractPeople(teamPage.url, query);
 
   const mergedPeopleMap = new Map<string, { name: string; designation: string; department: string }>();
   for (const p of aiPeople) {
@@ -493,6 +522,9 @@ export async function runRealEnrichment(query: string, queryType = "name"): Prom
     }
   }
 
+ const { extractAddressAI } = await import("@/lib/aiEnrichment");
+  const aiAddress = await extractAddressAI(query, text);
+
   const base = {
     website: home.url,
     industry: inferIndustry(text),
@@ -503,6 +535,7 @@ export async function runRealEnrichment(query: string, queryType = "name"): Prom
     founded: extractFounded(text) ?? jsonLd?.foundingDate?.slice(0, 4) ?? null,
     gst: extractGst(text),
     address:
+      aiAddress ??
       extractAddress(text) ??
       (typeof jsonLd?.address === "string"
         ? jsonLd.address
